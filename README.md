@@ -1,4 +1,5 @@
 # Bash Script for OpenStack Yoga Installation
+
 This bash script automates the installation of the Yoga version of OpenStack, a popular open-source cloud computing platform. The script installs several key OpenStack services, including:
 
 - Keystone: the identity service for OpenStack, providing authentication and authorization for all other services.
@@ -8,14 +9,15 @@ This bash script automates the installation of the Yoga version of OpenStack, a 
 - Neutron: the networking service for OpenStack, used to manage virtual networks.
 - Horizon: the web-based management interface for OpenStack.
 
-he script also includes a "conf" directory that contains preconfigured config files for each service. If any changes are made to the variables in the script, it is important to reflect those changes in the config files. Additionally, the script includes "admin-openrc" and "demo-openrc" files which contain preconfigured credentials. If any changes are made to the credentials, these files should also be updated.
+The script also includes a "conf" directory that contains preconfigured config files for each service. If any changes are made to the variables in the script, it is important to reflect those changes in the config files. Additionally, the script includes "admin-openrc" and "demo-openrc" files which contain preconfigured credentials. If any changes are made to the credentials, these files should also be updated.
 
 The script is designed to be executed on Ubuntu 20.04 LTS and can be downloaded and run using the following commands:
 
--bash
---Copy code
----cd openStack-yoga
----bash Yoga_Installation.sh
+```bash
+git clone https://github.com/lucadagati/openstack_yoga.git
+cd openStack-yoga
+bash Yoga_Installation.sh
+```
 
 It's important to note that the script has been tested on Ubuntu 20.04 LTS and it is recommended to use the same version of Ubuntu or another LTS version for the best compatibility.
 
