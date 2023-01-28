@@ -1,5 +1,9 @@
 # Bash Script for OpenStack Yoga Installation
 
+<p align="center">
+     <img src=https://github.com/lucadagati/openstack_stein_swift/blob/main/OpenStack-Logo-Horizontal.png>
+</p>
+
 This bash script automates the installation of the Yoga version of OpenStack, a popular open-source cloud computing platform. The script installs several key OpenStack services, including:
 
 - Keystone: the identity service for OpenStack, providing authentication and authorization for all other services.
