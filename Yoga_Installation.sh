@@ -64,7 +64,7 @@ function configuring_db()
 
 #copy preconfig file
 cp ./conf_files/99-openstack.cnf /etc/mysql/mariadb.conf.d/99-openstack.cnf
-sed -i -e  "s/^\(bind-address\s*=\).*/\1 $ip/" /etc/mysql/mariadb.conf.d/99-openstack.cnf
+#sed -i -e  "s/^\(bind-address\s*=\).*/\1 $ip/" /etc/mysql/mariadb.conf.d/99-openstack.cnf
 
 #Restart the database service
 service mysql restart
