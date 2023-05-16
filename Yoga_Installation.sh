@@ -51,6 +51,12 @@ apt -y install neutron-linuxbridge-agent
 
 #Installing Horizon
 apt -y install openstack-dashboard
+
+#Installing swift
+apt-get -y install swift swift-proxy python-swiftclient python-keystoneclient python-keystonemiddleware memcached
+apt-get -y install xfsprogs rsync
+apt-get -y install swift swift-account swift-container swift-object
+
 }
 
 function configuring_db()
@@ -433,18 +439,135 @@ function horizon()
 #copy preconfig file
 cp ./conf_files/local_settings.py /etc/openstack-dashboard/local_settings.py
 cp ./conf_files/openstack-dashboard.conf /etc/apache2/conf-available/openstack-dashboard.conf
-sed -i -e  's/^\(OPENSTACK_HOST\s*=\).*/\1 "$ip"/' /etc/openstack-dashboard/local_settings.py
+sed -i -e  "s/^\(OPENSTACK_HOST\s*=\).*/\1 '$ip'/" /etc/openstack-dashboard/local_settings.py
 sed -i -e  "s/^\(\s*'LOCATION'\s*:\).*/\1 '$ip:11211', /" /etc/openstack-dashboard/local_settings.py
 
 #Reload the web server configuration
 service apache2 reload
 }
 
+function swift_install()
+{
+#copy preconfig file
+mkdir -p /etc/swift
+cp ./conf_files/proxy-server.conf /etc/swift/proxy-server.conf
+cp ./conf_files/proxy-server.conf /etc/swift/internal-client.conf
+cp ./conf_files/rsyncd.conf /etc/rsyncd.conf
+sed -i -e "s/^\(address\s*=\).*/\1 $ip/" /etc/rsyncd.conf
+apt-get update
+apt-get install -y rsync
+sed -i -e 's/RSYNC_ENABLE=false/RSYNC_ENABLE=true/g' /etc/default/rsync
+service rsync restart
+cp ./conf_files/account-server.conf /etc/swift/account-server.conf
+#sed -i -e "s/^\(bind_ip\s*=\).*/\1 $ip/" /etc/swift/account-server.conf
+cp ./conf_files/container-server.conf /etc/swift/container-server.conf
+#sed -i -e "s/^\(bind_ip\s*=\).*/\1 $ip/" /etc/swift/container-server.conf
+cp ./conf_files/object-server.conf /etc/swift/object-server.conf
+#sed -i -e "s/^\(bind_ip\s*=\).*/\1 $ip/" /etc/swift/object-server.conf
+cp ./conf_files/swift.conf /etc/swift/
+
+
+. admin-openrc
+openstack user create --domain default --password SWIFT_PASS swift
+openstack role add --project service --user swift admin
+openstack service create --name swift --description "OpenStack Object Storage" object-store
+openstack endpoint create --region RegionOne object-store public http://$ip:8080/v1/AUTH_%\(project_id\)s
+openstack endpoint create --region RegionOne object-store internal http://$ip:8080/v1/AUTH_%\(project_id\)s
+openstack endpoint create --region RegionOne object-store admin http://$ip:8080/v1
+#chmod 777 /home
+#dd if=/dev/zero of=/home/hdd.img bs=3M count=1200
+#mkfs.xfs -f /home/$object_storage_disk
+#mkdir -p /srv/node/$object_storage_disk
+#echo "/home/$object_storage_disk /srv/node/$object_storage_disk xfs noatime,nodiratime,nobarrier,logbufs=8 0 2" >> /etc/fstab
+#mount /srv/node/$object_storage_disk
+#/srv/node/$object_storage_disk
+
+# Get the current user's home directory
+user_home=$(eval echo ~$SUDO_USER)
+
+# Check if a path was provided as an argument to the script
+if [ -z "$object_storage_disk" ]; then
+    # If no path was provided, use a default virtual disk in the user's home directory
+    object_storage_disk="$user_home/hdd.img"
+    # Create a virtual disk if it doesn't already exist
+    if [ ! -f "$object_storage_disk" ]; then
+        dd if=/dev/zero of="$object_storage_disk" bs=3M count=1200
+    fi
+else
+    # If a path was provided, use that
+    object_storage_disk=$object_storage_disk
+fi
+
+# Check if the disk already has a filesystem, if not, create one
+if ! blkid | grep -q "$object_storage_disk"; then
+    mkfs.xfs -f "$object_storage_disk"
+fi
+
+# Create the mount point directory if it doesn't exist
+mount_point="/srv/node/$(basename "$object_storage_disk")"
+mkdir -p "$mount_point"
+
+# Check if the disk is already in fstab, if not, add it
+if ! grep -q "$object_storage_disk" /etc/fstab; then
+    echo "$object_storage_disk $mount_point xfs noatime,nodiratime,nobarrier,logbufs=8 0 2" >> /etc/fstab
+fi
+
+# Mount the disk
+mount "$mount_point"
+
+# Restart the rsync service
+service rsync start
+
+#Ensure proper ownership of the mount point directory structure
+chown -R swift:swift /srv/node
+
+#Create the recon directory and ensure proper ownership of it
+mkdir -p /var/cache/swift
+chown -R root:swift /var/cache/swift
+chmod -R 775 /var/cache/swift
+
+device_name=$(basename "$object_storage_disk")
+
+#account ring creation
+swift-ring-builder account.builder create 10 1 1
+swift-ring-builder account.builder add --region 1 --zone 1 --ip $ip --port 6202 --device $device_name --weight 100
+swift-ring-builder account.builder
+swift-ring-builder account.builder rebalance
+
+#container ring creation
+swift-ring-builder container.builder create 10 1 1
+swift-ring-builder container.builder add --region 1 --zone 1 --ip $ip --port 6201 --device $device_name --weight 100
+swift-ring-builder container.builder
+swift-ring-builder container.builder rebalance
+
+#object ring creation
+swift-ring-builder object.builder create 10 1 1
+swift-ring-builder object.builder add --region 1 --zone 1 --ip $ip --port 6200 --device $device_name --weight 100
+swift-ring-builder object.builder
+swift-ring-builder object.builder rebalance
+
+#Distribute ring configuration files
+cp account.ring.gz container.ring.gz object.ring.gz /etc/swift
+
+#On all nodes, ensure proper ownership of the configuration directory
+chown -R root:swift /etc/swift
+service memcached restart
+service swift-proxy restart
+swift-init all start
+
+#cd "$current_path"
+
+#Swift Verification
+. admin-openrc
+swift stat
+}
+
+
 ######MariaDB Credentials Starts ######
 maria_db_user="root"
 
 #selecting new passsword for maria db root user
-maria_db_root_password="passdb"
+maria_db_root_password="password"
 
 maria_db_port="3306"
 maria_db_connect="mysql -h localhost -u$maria_db_user -p$maria_db_root_password --port=$maria_db_port"
@@ -488,8 +611,10 @@ neutron_db_password="NEUTRON_DBPASS"
 
 ####Getting Provider NIC name and IP Address starts #####
 
+current_path=$(pwd)
 ip=$(ip route get 8.8.8.8 | awk 'NR == 1 {print $7; exit }')
 network_interface=$(ip route get 8.8.8.8 | awk 'NR == 1 {print $5 ; exit }')
+#object_storage_disk=${1:-"hdd.img"};
 
 ####Getting Provider NIC name and IP Address ends #####
 
@@ -507,5 +632,6 @@ placement
 nova
 neutron
 horizon
+swift_install
 
 #######OpenStack YOGA Installation ends  ##############
