@@ -513,7 +513,7 @@ if ! grep -q "$object_storage_disk" /etc/fstab; then
 fi
 
 # Mount the disk
-mount "$mount_point"
+mount "$object_storage_disk" "$mount_point"
 
 # Restart the rsync service
 service rsync start
