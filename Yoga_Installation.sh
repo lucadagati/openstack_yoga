@@ -72,9 +72,9 @@ service mysql restart
 
 #####Delete anonymous users and  SET plugin = mysql_native_password starts######
 
-echo "UPDATE mysql.user SET Password=PASSWORD('$maria_db_root_password') WHERE User='root';" | mysql
+#echo "UPDATE mysql.user SET Password=PASSWORD('$maria_db_root_password') WHERE User='root';" | mysql
 echo "DELETE FROM mysql.user WHERE User='';" | mysql
-echo "UPDATE mysql.user SET plugin = 'mysql_native_password' WHERE User = 'root';" | mysql
+#echo "UPDATE mysql.user SET plugin = 'mysql_native_password' WHERE User = 'root';" | mysql
 echo "FLUSH PRIVILEGES;" | mysql
 
 #####Delete anonymous users and  SET plugin = 'mysql_native_password' ends######
@@ -568,7 +568,7 @@ swift stat
 maria_db_user="root"
 
 #selecting new passsword for maria db root user
-maria_db_root_password="password"
+maria_db_root_password=""
 
 maria_db_port="3306"
 maria_db_connect="mysql -h localhost -u$maria_db_user -p$maria_db_root_password --port=$maria_db_port"
