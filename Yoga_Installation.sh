@@ -59,82 +59,68 @@ apt-get -y install swift swift-account swift-container swift-object
 
 }
 
+
 function configuring_db()
 {
+    # Copy configuration files
+    sudo cp ./conf_files/99-openstack.cnf /etc/mysql/mariadb.conf.d/99-openstack.cnf
+    sudo cp ./conf_files/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
+    #sudo sed -i -e "s/^\(bind-address\s*=\).*/\1 $ip/" /etc/mysql/mariadb.conf.d/99-openstack.cnf
 
-#copy preconfig file
-cp ./conf_files/99-openstack.cnf /etc/mysql/mariadb.conf.d/99-openstack.cnf
-cp ./conf_files/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
-#sed -i -e  "s/^\(bind-address\s*=\).*/\1 $ip/" /etc/mysql/mariadb.conf.d/99-openstack.cnf
+    # Restart the database service
+    sudo service mysql restart
 
-#Restart the database service
-service mysql restart
+    # Ensure the root user uses mysql_native_password to authenticate (using sudo)
+    sudo mariadb -u root <<-EOF
+FLUSH PRIVILEGES;
+ALTER USER 'root'@'localhost' IDENTIFIED BY '$maria_db_root_password';
+DELETE FROM mysql.user WHERE User='';
+FLUSH PRIVILEGES;
+EOF
 
-#####Delete anonymous users and  SET plugin = mysql_native_password starts######
+    # Create databases and grant privileges
+    sudo mariadb -u root -p"$maria_db_root_password" <<-EOF
+CREATE DATABASE $keystone_db_name;
+GRANT ALL PRIVILEGES ON $keystone_db_name.* TO '$keystone_db_user'@'controller' IDENTIFIED BY '$keystone_db_password';
+GRANT ALL PRIVILEGES ON $keystone_db_name.* TO '$keystone_db_user'@'%';
 
-echo "UPDATE mysql.user SET Password=PASSWORD('$maria_db_root_password') WHERE User='root';" | mysql
-echo "DELETE FROM mysql.user WHERE User='';" | mysql
-echo "UPDATE mysql.user SET plugin = 'mysql_native_password' WHERE User = 'root';" | mysql
-echo "FLUSH PRIVILEGES;" | mysql
+CREATE DATABASE $glance_db_name;
+GRANT ALL PRIVILEGES ON $glance_db_name.* TO '$glance_db_user'@'controller' IDENTIFIED BY '$glance_db_password';
+GRANT ALL PRIVILEGES ON $glance_db_name.* TO '$glance_db_user'@'%';
 
-#####Delete anonymous users and  SET plugin = 'mysql_native_password' ends######
+CREATE DATABASE $placement_db_name;
+GRANT ALL PRIVILEGES ON $placement_db_name.* TO '$placement_db_user'@'controller' IDENTIFIED BY '$placement_db_password';
+GRANT ALL PRIVILEGES ON $placement_db_name.* TO '$placement_db_user'@'%';
 
-#######Database and Database user Creation Starts#######
+CREATE DATABASE $nova_api_db_name;
+GRANT ALL PRIVILEGES ON $nova_api_db_name.* TO '$nova_db_user'@'controller' IDENTIFIED BY '$nova_db_password';
+GRANT ALL PRIVILEGES ON $nova_api_db_name.* TO '$nova_db_user'@'%';
 
-#keystone database
-echo "CREATE DATABASE $keystone_db_name;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $keystone_db_name.* TO '$keystone_db_user'@'localhost' IDENTIFIED BY '$keystone_db_password';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $keystone_db_name.* TO '$keystone_db_user'@'%' IDENTIFIED BY '$keystone_db_password';" | $maria_db_connect
-echo "FLUSH PRIVILEGES;" | $maria_db_connect
+CREATE DATABASE $nova_db_name;
+GRANT ALL PRIVILEGES ON $nova_db_name.* TO '$nova_db_user'@'controller' IDENTIFIED BY '$nova_db_password';
+GRANT ALL PRIVILEGES ON $nova_db_name.* TO '$nova_db_user'@'%';
 
-#glance database
-echo "CREATE DATABASE $glance_db_name;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $glance_db_name.* TO '$glance_db_user'@'localhost' IDENTIFIED BY '$glance_db_password';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $glance_db_name.* TO '$glance_db_user'@'%' IDENTIFIED BY '$glance_db_password';" | $maria_db_connect
-echo "FLUSH PRIVILEGES;" | $maria_db_connect
+CREATE DATABASE $nova_cell0_db_name;
+GRANT ALL PRIVILEGES ON $nova_cell0_db_name.* TO '$nova_db_user'@'controller' IDENTIFIED BY '$nova_db_password';
+GRANT ALL PRIVILEGES ON $nova_cell0_db_name.* TO '$nova_db_user'@'%';
 
-#placement database
-echo "CREATE DATABASE $placement_db_name;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $placement_db_name.* TO '$placement_db_user'@'localhost' IDENTIFIED BY '$placement_db_password';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $placement_db_name.* TO '$placement_db_user'@'%' IDENTIFIED BY '$placement_db_password';" | $maria_db_connect
-echo "FLUSH PRIVILEGES;" | $maria_db_connect
+CREATE DATABASE $neutron_db_name;
+GRANT ALL PRIVILEGES ON $neutron_db_name.* TO '$neutron_db_user'@'controller' IDENTIFIED BY '$neutron_db_password';
+GRANT ALL PRIVILEGES ON $neutron_db_name.* TO '$neutron_db_user'@'%';
 
-#nova_api database
-echo "CREATE DATABASE $nova_api_db_name;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $nova_api_db_name.* TO '$nova_db_user'@'localhost' IDENTIFIED BY '$nova_db_password';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $nova_api_db_name.* TO '$nova_db_user'@'%' IDENTIFIED BY '$nova_db_password';" | $maria_db_connect
-echo "FLUSH PRIVILEGES;" | $maria_db_connect
+CREATE DATABASE iotronic;
+GRANT ALL PRIVILEGES ON iotronic.* TO 'iotronic'@'controller' IDENTIFIED BY 'smartme';
+GRANT ALL PRIVILEGES ON iotronic.* TO 'iotronic'@'%';
 
-#nova database
-echo "CREATE DATABASE $nova_db_name;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $nova_db_name.* TO '$nova_db_user'@'localhost' IDENTIFIED BY '$nova_db_password';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $nova_db_name.* TO '$nova_db_user'@'%' IDENTIFIED BY '$nova_db_password';" | $maria_db_connect
-echo "FLUSH PRIVILEGES;" | $maria_db_connect
+CREATE DATABASE designate;
+GRANT ALL PRIVILEGES ON designate.* TO 'designate'@'controller' IDENTIFIED BY 'smartme';
+GRANT ALL PRIVILEGES ON designate.* TO 'designate'@'%';
 
-#nova_cell0 database
-echo "CREATE DATABASE $nova_cell0_db_name;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $nova_cell0_db_name.* TO '$nova_db_user'@'localhost' IDENTIFIED BY '$nova_db_password';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $nova_cell0_db_name.* TO '$nova_db_user'@'%' IDENTIFIED BY '$nova_db_password';" | $maria_db_connect
-echo "FLUSH PRIVILEGES;" | $maria_db_connect
-
-#neutron database
-echo "CREATE DATABASE $neutron_db_name;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $neutron_db_name.* TO '$neutron_db_user'@'localhost' IDENTIFIED BY '$neutron_db_password';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON $neutron_db_name.* TO '$neutron_db_user'@'%' IDENTIFIED BY '$neutron_db_password';" | $maria_db_connect
-echo "FLUSH PRIVILEGES;" | $maria_db_connect
-
-#blazer database
-#echo "CREATE DATABASE blazar CHARACTER SET utf8;" | $maria_db_connect
-#######Database and Database user Creation ends#######
-
-echo "CREATE DATABASE iotronic;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON iotronic.* TO 'iotronic'@'localhost' IDENTIFIED BY 'smartme';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON iotronic.* TO 'iotronic'@'%' IDENTIFIED BY 'smartme';" | $maria_db_connect
-echo "CREATE DATABASE designate;" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON designate.* TO 'designate'@'localhost' IDENTIFIED BY 'smartme';" | $maria_db_connect
-echo "GRANT ALL PRIVILEGES ON designate.* TO 'designate'@'%' IDENTIFIED BY 'smartme';" | $maria_db_connect
-
+FLUSH PRIVILEGES;
+EOF
 }
+
+
 
 function chrony()
 {
