@@ -70,6 +70,12 @@ function configuring_db()
     # Restart the database service
     sudo service mysql restart
 
+   systemctl stop mariadb
+   rm -rf /var/lib/mysql/*
+   mysql_install_db --datadir=/var/lib/mysql --user=mysql
+   systemctl start mariadb
+
+
     # Ensure the root user uses mysql_native_password to authenticate (using sudo)
     sudo mariadb -u root <<-EOF
 FLUSH PRIVILEGES;
