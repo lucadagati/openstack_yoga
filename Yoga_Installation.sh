@@ -53,9 +53,9 @@ apt -y install neutron-linuxbridge-agent
 apt -y install openstack-dashboard
 
 #Installing swift
-apt-get -y install swift swift-proxy python-swiftclient python-keystoneclient python-keystonemiddleware memcached
-apt-get -y install xfsprogs rsync
-apt-get -y install swift swift-account swift-container swift-object
+#apt-get -y install swift swift-proxy python-swiftclient python-keystoneclient python-keystonemiddleware memcached
+#apt-get -y install xfsprogs rsync
+#apt-get -y install swift swift-account swift-container swift-object
 
 }
 
@@ -617,6 +617,6 @@ placement
 nova
 neutron
 horizon
-swift_install
+#swift_install
 
 #######OpenStack YOGA Installation ends  ##############
