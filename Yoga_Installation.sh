@@ -1,34 +1,5 @@
 #! /bin/bash
 
-# New hostname
-new_hostname="controller"
-
-# Current hostname
-current_hostname=$(hostname)
-
-# Check if the hostname is already "controller"
-if [ "$current_hostname" = "$new_hostname" ]; then
-    echo "The hostname is already set to \"$new_hostname\". No action required."
-else
-    echo "The hostname will be changed to \"$new_hostname\" in 5 seconds."
-    echo "WARNING: The system will reboot after changing the hostname."
-    echo "Please rerun this script after the reboot to complete the procedure."
-    echo "Press CTRL+C to cancel the operation."
-    sleep 5
-
-    # Modify hostname configuration file
-    sudo sed -i "s/^\(127.0.1.1\s\+\).*$/\1$new_hostname/" /etc/hosts
-    sudo sed -i "s/^\(hostname\s\+\).*$/\1$new_hostname/" /etc/hostname
-
-    # Change hostname
-    sudo hostnamectl set-hostname $new_hostname
-
-    # Reboot the system
-    echo "Rebooting the system..."
-    sudo reboot
-fi
-
-
 function host_config()
 {
 controller=$(echo "$ip"     "controller")
@@ -93,65 +64,41 @@ function configuring_db()
     # Copy configuration files
     cp ./conf_files/99-openstack.cnf /etc/mysql/mariadb.conf.d/99-openstack.cnf
     cp ./conf_files/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
-    #sed -i -e "s/^\(bind-address\s*=\).*/\1 $ip/" /etc/mysql/mariadb.conf.d/99-openstack.cnf
 
-    # Restart the database service
-    service mysql restart
+    # Restart the database service to apply configuration
+    systemctl restart mariadb.service
 
-    systemctl stop mariadb
-    sudo rm -rf /var/lib/mysql/*
-    sudo mysql_install_db --datadir=/var/lib/mysql --user=mysql
-    systemctl start mariadb
+    # Wait for the database service to restart
+    sleep 10
 
-
-    # Ensure the root user uses mysql_native_password to authenticate (using sudo)
-    mariadb -u root <<-EOF
-FLUSH PRIVILEGES;
-ALTER USER 'root'@'localhost' IDENTIFIED BY '$maria_db_root_password';
-DELETE FROM mysql.user WHERE User='';
-FLUSH PRIVILEGES;
+    # Set the root password and secure installation automatically
+    mysql -u root <<-EOF
+    SET PASSWORD FOR 'root'@'localhost' = PASSWORD('password');
+    DELETE FROM mysql.user WHERE User='';
+    DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+    DROP DATABASE IF EXISTS test;
+    DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+    FLUSH PRIVILEGES;
 EOF
 
-    # Create databases and grant privileges (password should not have any special characters that bash could misinterpret)
-    mariadb -u root -p"$maria_db_root_password" <<-EOF
-CREATE DATABASE $keystone_db_name;
-GRANT ALL PRIVILEGES ON $keystone_db_name.* TO '$keystone_db_user'@'localhost' IDENTIFIED BY '$keystone_db_password';
-GRANT ALL PRIVILEGES ON $keystone_db_name.* TO '$keystone_db_user'@'%';
+    # Define databases and their corresponding users and passwords
+    local dbs=("keystone" "glance" "placement" "nova_api" "nova" "nova_cell0" "neutron" "iotronic" "designate")
+    local users=("keystone" "glance" "placement" "nova" "nova" "nova" "neutron" "iotronic" "designate")
+    local passwords=("$keystone_db_password" "$glance_db_password" "$placement_db_password" "$nova_db_password" "$nova_db_password" "$nova_db_password" "$neutron_db_password" "smartme" "smartme")
 
-CREATE DATABASE $glance_db_name;
-GRANT ALL PRIVILEGES ON $glance_db_name.* TO '$glance_db_user'@'localhost' IDENTIFIED BY '$glance_db_password';
-GRANT ALL PRIVILEGES ON $glance_db_name.* TO '$glance_db_user'@'%';
+    for i in "${!dbs[@]}"; do
+        db=${dbs[$i]}
+        user=${users[$i]}
+        password=${passwords[$i]}
+        # Create database if it does not exist
+        mysql -u root -ppassword -e "CREATE DATABASE IF NOT EXISTS $db;"
+        # Grant privileges to the database user
+        mysql -u root -ppassword -e "GRANT ALL PRIVILEGES ON $db.* TO '$user'@'localhost' IDENTIFIED BY '$password';"
+        mysql -u root -ppassword -e "GRANT ALL PRIVILEGES ON $db.* TO '$user'@'%' IDENTIFIED BY '$password';"
+    done
 
-CREATE DATABASE $placement_db_name;
-GRANT ALL PRIVILEGES ON $placement_db_name.* TO '$placement_db_user'@'localhost' IDENTIFIED BY '$placement_db_password';
-GRANT ALL PRIVILEGES ON $placement_db_name.* TO '$placement_db_user'@'%';
-
-CREATE DATABASE $nova_api_db_name;
-GRANT ALL PRIVILEGES ON $nova_api_db_name.* TO '$nova_db_user'@'localhost' IDENTIFIED BY '$nova_db_password';
-GRANT ALL PRIVILEGES ON $nova_api_db_name.* TO '$nova_db_user'@'%';
-
-CREATE DATABASE $nova_db_name;
-GRANT ALL PRIVILEGES ON $nova_db_name.* TO '$nova_db_user'@'localhost' IDENTIFIED BY '$nova_db_password';
-GRANT ALL PRIVILEGES ON $nova_db_name.* TO '$nova_db_user'@'%';
-
-CREATE DATABASE $nova_cell0_db_name;
-GRANT ALL PRIVILEGES ON $nova_cell0_db_name.* TO '$nova_db_user'@'localhost' IDENTIFIED BY '$nova_db_password';
-GRANT ALL PRIVILEGES ON $nova_cell0_db_name.* TO '$nova_db_user'@'%';
-
-CREATE DATABASE $neutron_db_name;
-GRANT ALL PRIVILEGES ON $neutron_db_name.* TO '$neutron_db_user'@'localhost' IDENTIFIED BY '$neutron_db_password';
-GRANT ALL PRIVILEGES ON $neutron_db_name.* TO '$neutron_db_user'@'%';
-
-CREATE DATABASE iotronic;
-GRANT ALL PRIVILEGES ON iotronic.* TO 'iotronic'@'localhost' IDENTIFIED BY 'smartme';
-GRANT ALL PRIVILEGES ON iotronic.* TO 'iotronic'@'%';
-
-CREATE DATABASE designate;
-GRANT ALL PRIVILEGES ON designate.* TO 'designate'@'localhost' IDENTIFIED BY 'smartme';
-GRANT ALL PRIVILEGES ON designate.* TO 'designate'@'%';
-
-FLUSH PRIVILEGES;
-EOF
+    # Flush privileges to ensure all changes are applied
+    mysql -u root -ppassword -e "FLUSH PRIVILEGES;"
 }
 
 
@@ -635,6 +582,15 @@ network_interface=$(ip route get 8.8.8.8 | awk 'NR == 1 {print $5 ; exit }')
 object_storage_disk=${1:-"hdd.img"};
 
 ####Getting Provider NIC name and IP Address ends #####
+
+
+####Reset DB####
+systemctl stop mariadb
+rm -rf /var/lib/mysql/*
+mysql_install_db --datadir=/var/lib/mysql --user=mysql
+systemctl start mariadb
+
+sleep 10
 
 #######OpenStack YOGA Installation Starts  ##############
 
